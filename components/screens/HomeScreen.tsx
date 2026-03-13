@@ -47,8 +47,8 @@ export function HomeScreen() {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col">
-      <main className="flex-1 w-full max-w-2xl mx-auto flex flex-col min-h-0 px-4 py-6 sm:px-6 sm:py-8 md:px-8">
-        <div className="flex-1 flex flex-col items-center justify-center gap-6 py-6">
+      <main className="flex-1 w-full max-w-2xl mx-auto flex flex-col min-h-0 px-4 py-6 sm:px-6 sm:py-8 md:px-8 overflow-y-auto">
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 py-6 min-h-[min(60vh,400px)]">
           <div className="relative flex items-center justify-center size-48">
             {/* Кольцо уровня звука: появляется при активном микрофоне, реагирует на громкость */}
             {isActive && (
@@ -105,7 +105,7 @@ export function HomeScreen() {
           )}
         </div>
 
-        <div className="shrink-0 w-full">
+        <div className="sticky bottom-0 left-0 right-0 shrink-0 w-full bg-zinc-50 dark:bg-zinc-950 pt-2 -mx-4 px-4 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8">
           <TranscriptCollapsible />
         </div>
       </main>

@@ -75,6 +75,10 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
 
       const context = new AudioContext();
       contextRef.current = context;
+      // iOS: AudioContext создаётся в suspended — нужен resume() после жеста пользователя
+      if (context.state === "suspended") {
+        await context.resume();
+      }
 
       const workletUrl =
         typeof window !== "undefined"

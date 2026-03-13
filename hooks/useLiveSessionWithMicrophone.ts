@@ -41,9 +41,11 @@ export function useLiveSessionWithMicrophone() {
 
   const startSession = useCallback(async () => {
     isActiveRef.current = false;
+    // На мобильных (iOS/Safari) getUserMedia должен вызваться в контексте жеста пользователя.
+    // Сначала запускаем микрофон, потом подключаем сессию — иначе после await connect() жест «сгорает» и доступ к микрофону блокируется.
+    await microphone.start();
     await connect();
     isActiveRef.current = true;
-    await microphone.start();
   }, [connect, microphone]);
 
   const stopSession = useCallback(() => {
