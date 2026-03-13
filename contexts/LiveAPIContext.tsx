@@ -112,11 +112,13 @@ export function LiveAPIProvider({ children }: LiveAPIProviderProps) {
             }
           },
           onError: (message) => {
+            console.log("[ws] onError:", message);
             setError(message);
             setStatus("error");
             rejectConnected(new Error(message));
           },
           onClose: (reason?: string) => {
+            console.log("[ws] onClose reason:", reason);
             streamControllerRef.current = null;
             setStatus((s) => (s === "connected" ? "idle" : s));
             rejectConnected(new Error(reason ?? "Connection closed before open"));
@@ -169,6 +171,7 @@ export function LiveAPIProvider({ children }: LiveAPIProviderProps) {
       streamControllerRef.current = ctrl;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      console.log("[ws] connect catch:", message);
       setError(message);
       setStatus("error");
       streamControllerRef.current = null;
