@@ -41,6 +41,7 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
   }, [options.onChunk, options.onStreamEnd]);
 
   const stop = useCallback(() => {
+    console.log("[mic] stop called, stack:", new Error().stack);
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -87,6 +88,7 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
   }, []);
 
   const start = useCallback(async () => {
+    console.log("[mic] start called");
     setError(null);
     if (streamRef.current) {
       stop();
@@ -94,18 +96,26 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log("[mic] got stream");
       streamRef.current = stream;
+
+      stream.getTracks().forEach((t) => {
+        t.addEventListener("ended", () => console.log("[mic] track ended:", t.label));
+      });
 
       let context = contextRef.current;
       if (!context) {
         context = new AudioContext();
         contextRef.current = context;
       }
+      console.log("[mic] context state:", context.state);
       if (context.state === "suspended") {
         await context.resume();
       }
+      console.log("[mic] context resumed, state:", context.state);
 
       const onStateChange = () => {
+        console.log("[mic] context statechange:", context?.state);
         if (context?.state === "suspended") {
           void context.resume();
         }
@@ -117,8 +127,13 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
       const silentGain = context.createGain();
       silentGain.gain.value = 0;
 
+      let chunkCount = 0;
       const sendChunk = (data: Float32Array) => {
         if (!data?.length) return;
+        chunkCount++;
+        if (chunkCount <= 3 || chunkCount % 50 === 0) {
+          console.log("[mic] chunk", chunkCount, "length:", data.length);
+        }
         const onChunk = onChunkRef.current;
         if (!onChunk) return;
         const base64 = processAudioBufferToBase64(data, context!.sampleRate);
@@ -131,6 +146,7 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
             ? new URL("/live-audio-worklet.js", window.location.origin).href
             : "/live-audio-worklet.js";
         await context.audioWorklet.addModule(workletUrl);
+        console.log("[mic] worklet loaded");
         const workletNode = new AudioWorkletNode(context, "live-audio-processor");
         nodeRef.current = workletNode;
         workletNode.port.onmessage = (e: MessageEvent<Float32Array>) => {
@@ -138,7 +154,8 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
         };
         source.connect(workletNode);
         workletNode.connect(silentGain);
-      } catch {
+      } catch (e) {
+        console.log("[mic] worklet failed, fallback ScriptProcessor:", e);
         const bufferSize = 4096;
         const scriptProcessor = context.createScriptProcessor(bufferSize, 1, 1);
         scriptProcessorRef.current = scriptProcessor;
@@ -157,7 +174,9 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
       source.connect(analyser);
       analyserRef.current = analyser;
       setIsListening(true);
+      console.log("[mic] setup complete");
     } catch (err) {
+      console.error("[mic] error:", err);
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
       stop();
