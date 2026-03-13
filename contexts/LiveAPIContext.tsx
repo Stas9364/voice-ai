@@ -11,9 +11,6 @@ import {
 import { playPcmChunk, stopAudioPlayback } from "@/lib/gemini/audioPlayback";
 import { createLiveStream } from "@/lib/gemini/live-api-client";
 import { createLiveStreamDirectWS } from "@/lib/gemini/live-api-client-ws";
-import { patchWebSocketForClosedState } from "@/lib/gemini/patch-websocket";
-
-patchWebSocketForClosedState();
 
 export type LiveAPIStatus = "idle" | "connecting" | "connected" | "error";
 
