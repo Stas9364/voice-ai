@@ -11,6 +11,8 @@ export interface UseMicrophoneOptions {
 }
 
 export interface UseMicrophoneReturn {
+  /** Вызвать синхронно при клике, до любых await — иначе iOS заблокирует AudioContext. */
+  preinitAudioContext: () => void;
   start: () => Promise<void>;
   stop: () => void;
   isListening: boolean;
@@ -27,8 +29,10 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
   const streamRef = useRef<MediaStream | null>(null);
   const contextRef = useRef<AudioContext | null>(null);
   const nodeRef = useRef<AudioWorkletNode | null>(null);
+  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
+  const stateChangeHandlerRef = useRef<(() => void) | null>(null);
   const onChunkRef = useRef(options.onChunk);
   const onStreamEndRef = useRef(options.onStreamEnd);
   useEffect(() => {
@@ -42,7 +46,19 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
       rafRef.current = null;
     }
     analyserRef.current = null;
-    setLevel(0);
+    const ctx = contextRef.current;
+    if (ctx && stateChangeHandlerRef.current) {
+      ctx.removeEventListener("statechange", stateChangeHandlerRef.current);
+      stateChangeHandlerRef.current = null;
+    }
+    if (scriptProcessorRef.current) {
+      try {
+        scriptProcessorRef.current.disconnect();
+      } catch {
+        // already disconnected
+      }
+      scriptProcessorRef.current = null;
+    }
     if (nodeRef.current) {
       try {
         nodeRef.current.disconnect();
@@ -63,6 +79,13 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
     onStreamEndRef.current?.();
   }, []);
 
+  const preinitAudioContext = useCallback(() => {
+    if (contextRef.current) return;
+    const context = new AudioContext();
+    contextRef.current = context;
+    void context.resume();
+  }, []);
+
   const start = useCallback(async () => {
     setError(null);
     if (streamRef.current) {
@@ -73,36 +96,59 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const context = new AudioContext();
-      contextRef.current = context;
-      // iOS: AudioContext создаётся в suspended — нужен resume() после жеста пользователя
+      let context = contextRef.current;
+      if (!context) {
+        context = new AudioContext();
+        contextRef.current = context;
+      }
       if (context.state === "suspended") {
         await context.resume();
       }
 
-      const workletUrl =
-        typeof window !== "undefined"
-          ? new URL("/live-audio-worklet.js", window.location.origin).href
-          : "/live-audio-worklet.js";
-      await context.audioWorklet.addModule(workletUrl);
-
-      const workletNode = new AudioWorkletNode(context, "live-audio-processor");
-      nodeRef.current = workletNode;
-
-      workletNode.port.onmessage = (e: MessageEvent<Float32Array>) => {
-        const data = e.data;
-        if (!data?.length) return;
-        const onChunk = onChunkRef.current;
-        if (!onChunk) return;
-        const base64 = processAudioBufferToBase64(data, context.sampleRate);
-        onChunk(base64);
+      const onStateChange = () => {
+        if (context?.state === "suspended") {
+          void context.resume();
+        }
       };
+      context.addEventListener("statechange", onStateChange);
+      stateChangeHandlerRef.current = onStateChange;
 
       const source = context.createMediaStreamSource(stream);
       const silentGain = context.createGain();
       silentGain.gain.value = 0;
-      source.connect(workletNode);
-      workletNode.connect(silentGain);
+
+      const sendChunk = (data: Float32Array) => {
+        if (!data?.length) return;
+        const onChunk = onChunkRef.current;
+        if (!onChunk) return;
+        const base64 = processAudioBufferToBase64(data, context!.sampleRate);
+        onChunk(base64);
+      };
+
+      try {
+        const workletUrl =
+          typeof window !== "undefined"
+            ? new URL("/live-audio-worklet.js", window.location.origin).href
+            : "/live-audio-worklet.js";
+        await context.audioWorklet.addModule(workletUrl);
+        const workletNode = new AudioWorkletNode(context, "live-audio-processor");
+        nodeRef.current = workletNode;
+        workletNode.port.onmessage = (e: MessageEvent<Float32Array>) => {
+          sendChunk(e.data);
+        };
+        source.connect(workletNode);
+        workletNode.connect(silentGain);
+      } catch {
+        const bufferSize = 4096;
+        const scriptProcessor = context.createScriptProcessor(bufferSize, 1, 1);
+        scriptProcessorRef.current = scriptProcessor;
+        scriptProcessor.onaudioprocess = (e: AudioProcessingEvent) => {
+          const data = e.inputBuffer.getChannelData(0);
+          sendChunk(Float32Array.from(data));
+        };
+        source.connect(scriptProcessor);
+        scriptProcessor.connect(silentGain);
+      }
       silentGain.connect(context.destination);
 
       const analyser = context.createAnalyser();
@@ -139,5 +185,5 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
     };
   }, [isListening]);
 
-  return { start, stop, isListening, level, error };
+  return { preinitAudioContext, start, stop, isListening, level, error };
 }
