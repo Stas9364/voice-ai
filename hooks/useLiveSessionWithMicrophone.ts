@@ -22,6 +22,7 @@ export function useLiveSessionWithMicrophone() {
   } = api;
 
   const isActiveRef = useRef(false);
+  const isConnectingRef = useRef(false);
 
   const safeSendAudio = useCallback(
     (base64: string) => {
@@ -40,11 +41,16 @@ export function useLiveSessionWithMicrophone() {
   });
 
   const startSession = useCallback(async () => {
+    isConnectingRef.current = true;
     microphone.preinitAudioContext();
     isActiveRef.current = false;
-    await microphone.start();
-    await connect();
-    isActiveRef.current = true;
+    try {
+      await microphone.start();
+      await connect();
+      isActiveRef.current = true;
+    } finally {
+      isConnectingRef.current = false;
+    }
   }, [connect, microphone]);
 
   const stopSession = useCallback(() => {
@@ -56,7 +62,7 @@ export function useLiveSessionWithMicrophone() {
   useEffect(() => {
     if (status === "idle" || status === "error") {
       isActiveRef.current = false;
-      if (microphone.isListening) {
+      if (microphone.isListening && !isConnectingRef.current) {
         microphone.stop();
       }
     }
