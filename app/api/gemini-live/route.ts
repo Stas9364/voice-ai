@@ -13,6 +13,8 @@ const NATIVE_AUDIO_VOICE = "Aoede";
  * avoid serverless time limits (e.g. use self-hosted Node or Vercel Pro).
  */
 export async function POST(request: Request) {
+  const summaryHeader = request.headers.get("x-memory-summary");
+  const memorySummary = summaryHeader?.trim() ? summaryHeader.trim() : null;
   const body = request.body;
   if (!body) {
     return new Response("Body required", { status: 400 });
@@ -32,6 +34,17 @@ export async function POST(request: Request) {
     config: {
       tools: defaultLiveTools,
       responseModalities: [Modality.TEXT, Modality.AUDIO],
+      ...(memorySummary
+        ? {
+            systemInstruction: {
+              parts: [
+                {
+                  text: `Предыдущий контекст пользователя:\n${memorySummary}\n\nПродолжай разговор, учитывая этот контекст.`,
+                },
+              ],
+            },
+          }
+        : {}),
       speechConfig: {
         voiceConfig: {
           prebuiltVoiceConfig: { voiceName: NATIVE_AUDIO_VOICE },

@@ -17,6 +17,12 @@ export type LiveAPIStatus = "idle" | "connecting" | "connected" | "error";
 export interface LiveAPIContextValue {
   status: LiveAPIStatus;
   error: string | null;
+  email: string;
+  setEmail: (email: string) => void;
+  memorySummary: string | null;
+  isMemoryLoading: boolean;
+  memoryError: string | null;
+  clearMemory: () => Promise<void>;
   connect: () => Promise<void>;
   disconnect: () => void;
   sendAudio: (base64Pcm: string) => void;
@@ -42,22 +48,121 @@ export function LiveAPIProvider({ children }: LiveAPIProviderProps) {
   const [status, setStatus] = useState<LiveAPIStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string[]>([]);
+  const [email, setEmailState] = useState("");
+  const [memorySummary, setMemorySummary] = useState<string | null>(null);
+  const [isMemoryLoading, setIsMemoryLoading] = useState(false);
+  const [memoryError, setMemoryError] = useState<string | null>(null);
   const streamControllerRef = useRef<
     ReturnType<typeof createLiveStream> | ReturnType<typeof createLiveStreamDirectWS> | null
   >(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const eventLogRef = useRef<Array<{ role: "assistant" | "meta"; content: string; createdAt: string }>>([]);
+
+  const normalizeEmail = useCallback((value: string) => value.trim().toLowerCase(), []);
+
+  const flushSessionMemory = useCallback(async () => {
+    const normalizedEmail = normalizeEmail(email);
+    const sessionId = sessionIdRef.current;
+    const events = eventLogRef.current;
+
+    if (!normalizedEmail || !sessionId || events.length === 0) return;
+
+    try {
+      const response = await fetch("/api/memory/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: normalizedEmail,
+          sessionId,
+          events,
+        }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
+        const msg = body.error ?? `HTTP ${response.status}`;
+        console.error("[memory] save session failed:", msg, body.code ?? "");
+        setMemoryError(msg);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[memory] save session failed:", message);
+      setMemoryError(message);
+    } finally {
+      eventLogRef.current = [];
+      sessionIdRef.current = null;
+    }
+  }, [email, normalizeEmail]);
 
   const disconnect = useCallback(() => {
+    void flushSessionMemory();
     streamControllerRef.current?.abort();
     streamControllerRef.current = null;
     stopAudioPlayback();
     setStatus("idle");
     setError(null);
-  }, []);
+  }, [flushSessionMemory]);
+
+  const setEmail = useCallback(
+    (value: string) => {
+      setEmailState(value);
+      if (!normalizeEmail(value)) {
+        setMemorySummary(null);
+        setMemoryError(null);
+      }
+    },
+    [normalizeEmail]
+  );
+
+  const clearMemory = useCallback(async () => {
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) return;
+    setMemoryError(null);
+    const response = await fetch("/api/memory/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: normalizedEmail }),
+    });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error ?? `HTTP ${response.status}`);
+    }
+    setMemorySummary(null);
+  }, [email, normalizeEmail]);
 
   const connect = useCallback(async () => {
+    const normalizedEmail = normalizeEmail(email);
     setError(null);
+    setMemoryError(null);
     setTranscript([]);
     setStatus("connecting");
+    eventLogRef.current = [
+      { role: "meta", content: "voice_session_started", createdAt: new Date().toISOString() },
+    ];
+    sessionIdRef.current = crypto.randomUUID();
+
+    let initialSummary = "";
+    if (normalizedEmail) {
+      setIsMemoryLoading(true);
+      try {
+        const response = await fetch(
+          `/api/memory/summary?email=${encodeURIComponent(normalizedEmail)}`
+        );
+        if (!response.ok) {
+          const body = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(body.error ?? `HTTP ${response.status}`);
+        }
+        const payload = (await response.json()) as { summary?: string | null };
+        initialSummary = payload.summary?.trim() ?? "";
+        setMemorySummary(initialSummary || null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setMemoryError(message);
+      } finally {
+        setIsMemoryLoading(false);
+      }
+    } else {
+      setMemorySummary(null);
+    }
 
     const useDirectWS =
       typeof window !== "undefined" &&
@@ -91,6 +196,11 @@ export function LiveAPIProvider({ children }: LiveAPIProviderProps) {
           },
           onText: (text) => {
             setTranscript((prev) => [...prev, text]);
+            eventLogRef.current.push({
+              role: "assistant",
+              content: text,
+              createdAt: new Date().toISOString(),
+            });
           },
           onAudio: (data, mimeType) => {
             playPcmChunk(data, mimeType);
@@ -123,11 +233,16 @@ export function LiveAPIProvider({ children }: LiveAPIProviderProps) {
             setStatus((s) => (s === "connected" ? "idle" : s));
             rejectConnected(new Error(reason ?? "Connection closed before open"));
           },
-        })
+        }, { initialSummary })
       : createLiveStream({
       onOpen: () => setStatus("connected"),
       onText: (text) => {
         setTranscript((prev) => [...prev, text]);
+        eventLogRef.current.push({
+          role: "assistant",
+          content: text,
+          createdAt: new Date().toISOString(),
+        });
       },
       onAudio: (data, mimeType) => {
         playPcmChunk(data, mimeType);
@@ -156,7 +271,7 @@ export function LiveAPIProvider({ children }: LiveAPIProviderProps) {
         streamControllerRef.current = null;
         setStatus((s) => (s === "connected" ? "idle" : s));
       },
-    });
+    }, { initialSummary });
 
     try {
       await ctrl.start();
@@ -176,7 +291,7 @@ export function LiveAPIProvider({ children }: LiveAPIProviderProps) {
       setStatus("error");
       streamControllerRef.current = null;
     }
-  }, []);
+  }, [email, normalizeEmail]);
 
   const sendAudio = useCallback((base64Pcm: string) => {
     streamControllerRef.current?.sendAudio(base64Pcm);
@@ -200,6 +315,12 @@ export function LiveAPIProvider({ children }: LiveAPIProviderProps) {
   const value: LiveAPIContextValue = {
     status,
     error,
+    email,
+    setEmail,
+    memorySummary,
+    isMemoryLoading,
+    memoryError,
+    clearMemory,
     connect,
     disconnect,
     sendAudio,

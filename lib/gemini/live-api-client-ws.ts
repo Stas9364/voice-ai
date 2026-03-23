@@ -36,6 +36,10 @@ export interface FunctionResponsePayload {
   response?: Record<string, unknown>;
 }
 
+export interface LiveStreamOptions {
+  initialSummary?: string;
+}
+
 export type LiveStreamController = {
   sendAudio: (base64Pcm: string) => void;
   sendAudioStreamEnd: () => void;
@@ -53,7 +57,10 @@ function isClosedSocketError(e: unknown): boolean {
   return /CLOSING|CLOSED|already closed/i.test(msg);
 }
 
-export function createLiveStreamDirectWS(callbacks: LiveStreamCallbacks = {}): LiveStreamController {
+export function createLiveStreamDirectWS(
+  callbacks: LiveStreamCallbacks = {},
+  options: LiveStreamOptions = {}
+): LiveStreamController {
   let session: Session | null = null;
 
   return {
@@ -113,6 +120,17 @@ export function createLiveStreamDirectWS(callbacks: LiveStreamCallbacks = {}): L
         model: LIVE_MODEL,
         config: {
           responseModalities: [Modality.AUDIO],
+          ...(options.initialSummary
+            ? {
+                systemInstruction: {
+                  parts: [
+                    {
+                      text: `Предыдущий контекст пользователя:\n${options.initialSummary}\n\nПродолжай разговор с учетом этого контекста.`,
+                    },
+                  ],
+                },
+              }
+            : {}),
         },
         callbacks: {
           onopen: () => callbacks.onOpen?.(),

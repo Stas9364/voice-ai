@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { TranscriptCollapsible } from "@/components/Transcript/TranscriptCollapsible";
 import { useLiveSessionWithMicrophone } from "@/hooks/useLiveSessionWithMicrophone";
+import { useLiveAPI } from "@/contexts/LiveAPIContext";
 
 const statusLabels: Record<string, string> = {
   idle: "Готов",
@@ -13,6 +14,14 @@ const statusLabels: Record<string, string> = {
 
 export function HomeScreen() {
   const {
+    email,
+    setEmail,
+    memorySummary,
+    isMemoryLoading,
+    memoryError,
+    clearMemory,
+  } = useLiveAPI();
+  const {
     startSession,
     stopSession,
     status,
@@ -21,6 +30,8 @@ export function HomeScreen() {
     error,
   } = useLiveSessionWithMicrophone();
   const [isStarting, setIsStarting] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
 
   const handleStart = async () => {
     setIsStarting(true);
@@ -45,10 +56,61 @@ export function HomeScreen() {
       ? "Стоп"
       : "Начать";
 
+  const handleClearMemory = async () => {
+    setIsClearing(true);
+    setClearError(null);
+    try {
+      await clearMemory();
+    } catch (err) {
+      setClearError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col">
       <main className="flex-1 w-full max-w-2xl mx-auto flex flex-col min-h-0 px-4 py-6 sm:px-6 sm:py-8 md:px-8 overflow-y-auto">
         <div className="flex-1 flex flex-col items-center justify-center gap-6 py-6 min-h-[min(60vh,400px)]">
+          <div className="w-full max-w-md space-y-2">
+            <label
+              htmlFor="email"
+              className="text-sm text-zinc-700 dark:text-zinc-300 block"
+            >
+              Введите свой email, чтобы я мог продолжить предыдущий разговор
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                className="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-400/40"
+              />
+              <button
+                type="button"
+                onClick={handleClearMemory}
+                disabled={!email.trim() || isClearing}
+                className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isClearing ? "Очистка…" : "Очистить контекст"}
+              </button>
+            </div>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              {isMemoryLoading
+                ? "Загружаю предыдущий контекст…"
+                : memorySummary
+                  ? "Найден сохраненный контекст, он будет учтен при старте."
+                  : "Если email пустой, предыдущий контекст не используется."}
+            </p>
+            {(memoryError || clearError) && (
+              <p className="text-xs text-red-600 dark:text-red-400">
+                {memoryError ?? clearError}
+              </p>
+            )}
+          </div>
+
           <div className="relative flex items-center justify-center size-48">
             {/* Кольцо уровня звука: появляется при активном микрофоне, реагирует на громкость */}
             {isActive && (

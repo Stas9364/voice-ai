@@ -28,6 +28,10 @@ export interface LiveStreamCallbacks {
   onClose?: (reason?: string) => void;
 }
 
+export interface LiveStreamOptions {
+  initialSummary?: string;
+}
+
 /** One function response for sendToolResponse. */
 export interface FunctionResponsePayload {
   id?: string;
@@ -44,7 +48,10 @@ const encoder = new TextEncoder();
  * @param callbacks - Optional handlers for stream events
  * @returns Controller with sendAudio(), sendAudioStreamEnd(), sendToolResponse(), and abort()
  */
-export function createLiveStream(callbacks: LiveStreamCallbacks = {}): {
+export function createLiveStream(
+  callbacks: LiveStreamCallbacks = {},
+  options: LiveStreamOptions = {}
+): {
   sendAudio: (base64Pcm: string) => void;
   sendAudioStreamEnd: () => void;
   sendToolResponse: (functionResponses: FunctionResponsePayload | FunctionResponsePayload[]) => void;
@@ -92,7 +99,12 @@ export function createLiveStream(callbacks: LiveStreamCallbacks = {}): {
         method: "POST",
         body: readable,
         signal: abortController.signal,
-        headers: { "Content-Type": NDJSON_MIME },
+        headers: {
+          "Content-Type": NDJSON_MIME,
+          ...(options.initialSummary
+            ? { "x-memory-summary": options.initialSummary }
+            : {}),
+        },
         ...({ duplex: "half" } as RequestInit),
       });
 
