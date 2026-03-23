@@ -41,7 +41,6 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
   }, [options.onChunk, options.onStreamEnd]);
 
   const stop = useCallback(() => {
-    console.log("[mic] stop called, stack:", new Error().stack);
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
