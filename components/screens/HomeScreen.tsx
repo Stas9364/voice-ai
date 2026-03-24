@@ -70,33 +70,7 @@ export function HomeScreen() {
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col">
       <main className="flex-1 w-full max-w-2xl mx-auto flex flex-col min-h-0 px-4 py-6 sm:px-6 sm:py-8 md:px-8 overflow-y-auto">
         <div className="flex-1 flex flex-col items-center justify-center gap-6 py-6 min-h-[min(60vh,400px)]">
-          <div className="w-full max-w-md space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm text-zinc-700 dark:text-zinc-300">
-                Контекст сохраняется локально в этом браузере
-              </p>
-              <button
-                type="button"
-                onClick={handleClearMemory}
-                disabled={isClearing}
-                className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isClearing ? "Очистка…" : "Очистить контекст"}
-              </button>
-            </div>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              {isMemoryLoading
-                ? "Загружаю предыдущий контекст…"
-                : memorySummary
-                  ? "Найден сохраненный контекст, он будет учтен при старте."
-                  : "Сохраненный контекст пока отсутствует."}
-            </p>
-            {(memoryError || clearError) && (
-              <p className="text-xs text-red-600 dark:text-red-400">
-                {memoryError ?? clearError}
-              </p>
-            )}
-          </div>
+
 
           <div className="relative flex items-center justify-center size-48">
             {/* Кольцо уровня звука: появляется при активном микрофоне, реагирует на громкость */}
@@ -115,11 +89,10 @@ export function HomeScreen() {
               type="button"
               onClick={handleToggle}
               disabled={isStarting}
-              className={`relative flex cursor-pointer items-center justify-center size-40 rounded-full font-medium text-sm sm:text-base touch-manipulation active:scale-95 disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100 transition shadow-lg hover:shadow-xl disabled:shadow-lg ${
-                isActive
-                  ? "border-2 border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200"
-                  : "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
-              }`}
+              className={`relative flex cursor-pointer items-center justify-center size-40 rounded-full font-medium text-sm sm:text-base touch-manipulation active:scale-95 disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100 transition shadow-lg hover:shadow-xl disabled:shadow-lg ${isActive
+                ? "border-2 border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200"
+                : "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
+                }`}
               aria-label={isActive ? "Остановить" : "Начать разговор"}
             >
               {buttonLabel}
@@ -130,15 +103,14 @@ export function HomeScreen() {
             aria-live="polite"
           >
             <span
-              className={`inline-block w-2 h-2 rounded-full shrink-0 ${
-                status === "connected"
-                  ? "bg-emerald-500"
-                  : status === "connecting"
-                    ? "bg-amber-500 animate-pulse"
-                    : status === "error"
-                      ? "bg-red-500"
-                      : "bg-zinc-400 dark:bg-zinc-500"
-              }`}
+              className={`inline-block w-2 h-2 rounded-full shrink-0 ${status === "connected"
+                ? "bg-emerald-500"
+                : status === "connecting"
+                  ? "bg-amber-500 animate-pulse"
+                  : status === "error"
+                    ? "bg-red-500"
+                    : "bg-zinc-400 dark:bg-zinc-500"
+                }`}
             />
             <span className="text-sm text-zinc-600 dark:text-zinc-400">
               {statusLabels[status] ?? status}
@@ -154,7 +126,30 @@ export function HomeScreen() {
           )}
         </div>
 
-        <div className="sticky bottom-0 left-0 right-0 shrink-0 w-full bg-zinc-50 dark:bg-zinc-950 pt-2 -mx-4 px-4 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8">
+        <div className="w-full flex items-center gap-x-5 space-y-2">
+          <button
+            type="button"
+            onClick={handleClearMemory}
+            disabled={isClearing}
+            className="rounded-lg w-full border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isClearing ? "Очистка…" : "Очистить контекст"}
+          </button>
+          <p className="block text-xs w-full text-zinc-500 dark:text-zinc-400">
+            {isMemoryLoading
+              ? "Загружаю предыдущий контекст…"
+              : memorySummary
+                ? "Найден сохраненный контекст, он будет учтен при старте."
+                : "Сохраненный контекст пока отсутствует."}
+          </p>
+          {(memoryError || clearError) && (
+            <p className="text-xs text-red-600 dark:text-red-400">
+              {memoryError ?? clearError}
+            </p>
+          )}
+        </div>
+
+        <div className="sticky flex  bottom-0 left-0 right-0 shrink-0 w-full bg-zinc-50 dark:bg-zinc-950 pt-2  ">
           <TranscriptCollapsible />
         </div>
       </main>
