@@ -14,8 +14,6 @@ const statusLabels: Record<string, string> = {
 
 export function HomeScreen() {
   const {
-    email,
-    setEmail,
     memorySummary,
     isMemoryLoading,
     memoryError,
@@ -73,25 +71,14 @@ export function HomeScreen() {
       <main className="flex-1 w-full max-w-2xl mx-auto flex flex-col min-h-0 px-4 py-6 sm:px-6 sm:py-8 md:px-8 overflow-y-auto">
         <div className="flex-1 flex flex-col items-center justify-center gap-6 py-6 min-h-[min(60vh,400px)]">
           <div className="w-full max-w-md space-y-2">
-            <label
-              htmlFor="email"
-              className="text-sm text-zinc-700 dark:text-zinc-300 block"
-            >
-              Введите свой email, чтобы я мог продолжить предыдущий разговор
-            </label>
-            <div className="flex gap-2">
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-                className="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-400/40"
-              />
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm text-zinc-700 dark:text-zinc-300">
+                Контекст сохраняется локально в этом браузере
+              </p>
               <button
                 type="button"
                 onClick={handleClearMemory}
-                disabled={!email.trim() || isClearing}
+                disabled={isClearing}
                 className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isClearing ? "Очистка…" : "Очистить контекст"}
@@ -102,7 +89,7 @@ export function HomeScreen() {
                 ? "Загружаю предыдущий контекст…"
                 : memorySummary
                   ? "Найден сохраненный контекст, он будет учтен при старте."
-                  : "Если email пустой, предыдущий контекст не используется."}
+                  : "Сохраненный контекст пока отсутствует."}
             </p>
             {(memoryError || clearError) && (
               <p className="text-xs text-red-600 dark:text-red-400">

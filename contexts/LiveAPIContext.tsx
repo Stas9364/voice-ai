@@ -11,14 +11,17 @@ import {
 import { playPcmChunk, stopAudioPlayback } from "@/lib/gemini/audioPlayback";
 import { createLiveStream } from "@/lib/gemini/live-api-client";
 import { createLiveStreamDirectWS } from "@/lib/gemini/live-api-client-ws";
+import {
+  appendEvents,
+  loadSummary,
+  resetMemory,
+} from "@/lib/memory/indexeddbMemory";
 
 export type LiveAPIStatus = "idle" | "connecting" | "connected" | "error";
 
 export interface LiveAPIContextValue {
   status: LiveAPIStatus;
   error: string | null;
-  email: string;
-  setEmail: (email: string) => void;
   memorySummary: string | null;
   isMemoryLoading: boolean;
   memoryError: string | null;
@@ -48,7 +51,6 @@ export function LiveAPIProvider({ children }: LiveAPIProviderProps) {
   const [status, setStatus] = useState<LiveAPIStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string[]>([]);
-  const [email, setEmailState] = useState("");
   const [memorySummary, setMemorySummary] = useState<string | null>(null);
   const [isMemoryLoading, setIsMemoryLoading] = useState(false);
   const [memoryError, setMemoryError] = useState<string | null>(null);
@@ -58,40 +60,24 @@ export function LiveAPIProvider({ children }: LiveAPIProviderProps) {
   const sessionIdRef = useRef<string | null>(null);
   const eventLogRef = useRef<Array<{ role: "assistant" | "meta"; content: string; createdAt: string }>>([]);
 
-  const normalizeEmail = useCallback((value: string) => value.trim().toLowerCase(), []);
-
   const flushSessionMemory = useCallback(async () => {
-    const normalizedEmail = normalizeEmail(email);
     const sessionId = sessionIdRef.current;
     const events = eventLogRef.current;
 
-    if (!normalizedEmail || !sessionId || events.length === 0) return;
+    if (!sessionId || events.length === 0) return;
 
     try {
-      const response = await fetch("/api/memory/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: normalizedEmail,
-          sessionId,
-          events,
-        }),
-      });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
-        const msg = body.error ?? `HTTP ${response.status}`;
-        console.error("[memory] save session failed:", msg, body.code ?? "");
-        setMemoryError(msg);
-      }
+      const result = await appendEvents({ sessionId, events });
+      setMemorySummary(result.summary);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("[memory] save session failed:", message);
+      console.error("[memory] save local session failed:", message);
       setMemoryError(message);
     } finally {
       eventLogRef.current = [];
       sessionIdRef.current = null;
     }
-  }, [email, normalizeEmail]);
+  }, []);
 
   const disconnect = useCallback(() => {
     void flushSessionMemory();
@@ -102,35 +88,13 @@ export function LiveAPIProvider({ children }: LiveAPIProviderProps) {
     setError(null);
   }, [flushSessionMemory]);
 
-  const setEmail = useCallback(
-    (value: string) => {
-      setEmailState(value);
-      if (!normalizeEmail(value)) {
-        setMemorySummary(null);
-        setMemoryError(null);
-      }
-    },
-    [normalizeEmail]
-  );
-
   const clearMemory = useCallback(async () => {
-    const normalizedEmail = normalizeEmail(email);
-    if (!normalizedEmail) return;
     setMemoryError(null);
-    const response = await fetch("/api/memory/reset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: normalizedEmail }),
-    });
-    if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      throw new Error(body.error ?? `HTTP ${response.status}`);
-    }
+    await resetMemory();
     setMemorySummary(null);
-  }, [email, normalizeEmail]);
+  }, []);
 
   const connect = useCallback(async () => {
-    const normalizedEmail = normalizeEmail(email);
     setError(null);
     setMemoryError(null);
     setTranscript([]);
@@ -141,27 +105,16 @@ export function LiveAPIProvider({ children }: LiveAPIProviderProps) {
     sessionIdRef.current = crypto.randomUUID();
 
     let initialSummary = "";
-    if (normalizedEmail) {
-      setIsMemoryLoading(true);
-      try {
-        const response = await fetch(
-          `/api/memory/summary?email=${encodeURIComponent(normalizedEmail)}`
-        );
-        if (!response.ok) {
-          const body = (await response.json().catch(() => ({}))) as { error?: string };
-          throw new Error(body.error ?? `HTTP ${response.status}`);
-        }
-        const payload = (await response.json()) as { summary?: string | null };
-        initialSummary = payload.summary?.trim() ?? "";
-        setMemorySummary(initialSummary || null);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        setMemoryError(message);
-      } finally {
-        setIsMemoryLoading(false);
-      }
-    } else {
-      setMemorySummary(null);
+    setIsMemoryLoading(true);
+    try {
+      const snapshot = await loadSummary();
+      initialSummary = snapshot.summary?.trim() ?? "";
+      setMemorySummary(initialSummary || null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setMemoryError(message);
+    } finally {
+      setIsMemoryLoading(false);
     }
 
     const useDirectWS =
@@ -291,7 +244,7 @@ export function LiveAPIProvider({ children }: LiveAPIProviderProps) {
       setStatus("error");
       streamControllerRef.current = null;
     }
-  }, [email, normalizeEmail]);
+  }, []);
 
   const sendAudio = useCallback((base64Pcm: string) => {
     streamControllerRef.current?.sendAudio(base64Pcm);
@@ -315,8 +268,6 @@ export function LiveAPIProvider({ children }: LiveAPIProviderProps) {
   const value: LiveAPIContextValue = {
     status,
     error,
-    email,
-    setEmail,
     memorySummary,
     isMemoryLoading,
     memoryError,
