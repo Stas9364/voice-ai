@@ -9,7 +9,8 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 import type { LiveServerMessage, Session } from "@google/genai";
 
-const LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
+const LIVE_MODEL = "gemini-3.1-flash-live-preview";
+// const LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
 const AUDIO_MIME = "audio/pcm;rate=16000";
 
 export type LiveStreamEvent =
